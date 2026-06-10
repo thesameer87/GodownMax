@@ -1,0 +1,330 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum OrderType {
+  PURCHASE
+  SALES
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  TRANSFER
+  ADJUSTMENT
+  RETURN
+}
+
+enum NotificationType {
+  LOW_STOCK
+  OUT_OF_STOCK
+  EXPIRY_ALERT
+  ORDER_STATUS
+  SYSTEM
+  AI_INSIGHT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          Role      @default(STAFF)
+  avatar        String?
+  phone         String?
+  isActive      Boolean   @default(true)
+  resetToken    String?
+  resetExpiry   DateTime?
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  orders        Order[]
+  activityLogs  ActivityLog[]
+  notifications Notification[]
+  aiReports     AIReport[]
+  stockMovements StockMovement[]
+
+  @@map("users")
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  color       String?
+  icon        String?
+  parentId    String?
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("categories")
+}
+
+model Product {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  sku             String    @unique
+  barcode         String?   @unique
+  categoryId      String?
+  category        Category? @relation(fields: [categoryId], references: [id])
+  tags            String[]
+  images          String[]
+  costPrice       Float     @default(0)
+  sellingPrice    Float     @default(0)
+  taxRate         Float     @default(0)
+  hsnCode         String?
+  unit            String    @default("pcs")
+  weight          Float?
+  dimensions      Json?
+  isActive        Boolean   @default(true)
+  minStockLevel   Int       @default(10)
+  maxStockLevel   Int       @default(1000)
+  reorderPoint    Int       @default(20)
+  reorderQuantity Int       @default(50)
+  supplierId      String?
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  inventoryItems  InventoryItem[]
+  orderItems      OrderItem[]
+  stockMovements  StockMovement[]
+  batchLots       BatchLot[]
+
+  @@map("products")
+}
+
+model Warehouse {
+  id          String    @id @default(cuid())
+  name        String
+  code        String    @unique
+  address     String?
+  city        String?
+  country     String?
+  managerId   String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  inventoryItems    InventoryItem[]
+  stockMovementsFrom StockMovement[] @relation("FromWarehouse")
+  stockMovementsTo   StockMovement[] @relation("ToWarehouse")
+
+  @@map("warehouses")
+}
+
+model InventoryItem {
+  id           String    @id @default(cuid())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id])
+  warehouseId  String
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
+  quantity     Int       @default(0)
+  reservedQty  Int       @default(0)
+  availableQty Int       @default(0)
+  location     String?
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([productId, warehouseId])
+  @@map("inventory_items")
+}
+
+model BatchLot {
+  id           String    @id @default(cuid())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id])
+  batchNumber  String
+  lotNumber    String?
+  quantity     Int
+  expiryDate   DateTime?
+  manufactureDate DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+
+  @@map("batch_lots")
+}
+
+model StockMovement {
+  id            String            @id @default(cuid())
+  productId     String
+  product       Product           @relation(fields: [productId], references: [id])
+  type          StockMovementType
+  quantity      Int
+  fromWarehouseId String?
+  fromWarehouse   Warehouse?      @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouseId   String?
+  toWarehouse     Warehouse?      @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+  reference     String?
+  notes         String?
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+  createdAt     DateTime          @default(now())
+
+  @@map("stock_movements")
+}
+
+model Supplier {
+  id          String    @id @default(cuid())
+  name        String
+  email       String?   @unique
+  phone       String?
+  address     String?
+  city        String?
+  country     String?
+  gstin       String?
+  website     String?
+  rating      Float?
+  isActive    Boolean   @default(true)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+  orders      Order[]
+
+  @@map("suppliers")
+}
+
+model Customer {
+  id          String    @id @default(cuid())
+  name        String
+  email       String?   @unique
+  phone       String?
+  address     String?
+  city        String?
+  country     String?
+  gstin       String?
+  creditLimit Float     @default(0)
+  isActive    Boolean   @default(true)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  orders      Order[]
+
+  @@map("customers")
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  orderNumber  String      @unique
+  type         OrderType
+  status       OrderStatus @default(PENDING)
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  supplierId   String?
+  supplier     Supplier?   @relation(fields: [supplierId], references: [id])
+  customerId   String?
+  customer     Customer?   @relation(fields: [customerId], references: [id])
+  subtotal     Float       @default(0)
+  taxAmount    Float       @default(0)
+  discount     Float       @default(0)
+  total        Float       @default(0)
+  paidAmount   Float       @default(0)
+  dueDate      DateTime?
+  deliveredAt  DateTime?
+  notes        String?
+  invoiceNumber String?     @unique
+  invoiceUrl   String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  items        OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Float
+  taxRate   Float   @default(0)
+  discount  Float   @default(0)
+  total     Float
+
+  @@map("order_items")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id])
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("activity_logs")
+}
+
+model AIReport {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  type        String
+  query       String?
+  result      Json
+  model       String   @default("gpt-4o-mini")
+  tokensUsed  Int?
+  createdAt   DateTime @default(now())
+
+  @@map("ai_reports")
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
